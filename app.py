@@ -2,7 +2,7 @@ import streamlit as st
 from transformers import pipeline, MarianMTModel, MarianTokenizer
 from textblob import TextBlob
 import nltk
-from nltk.tokenize import sent_tokenize
+from nltk.tokenize.punkt import PunktSentenceTokenizer, PunktParameters
 import speech_recognition as sr
 from langdetect import detect
 from gtts import gTTS
@@ -29,9 +29,12 @@ def translate(text, src_lang, tgt_lang="en"):
 def back_translate(text, tgt_lang, src_lang="en"):
     return translate(text, src_lang=src_lang, tgt_lang=tgt_lang)
 
-# ILR scoring logic
+# ILR scoring logic (final fix using explicit Punkt tokenizer)
 def assess_ilr_abilities(text):
-    sentences = sent_tokenize(text)
+    punkt_param = PunktParameters()
+    tokenizer = PunktSentenceTokenizer(punkt_param)
+    sentences = tokenizer.tokenize(text)
+
     blob = TextBlob(text)
 
     function_score = sum(1 for s in sentences if len(s.split()) > 10)

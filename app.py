@@ -63,10 +63,10 @@ def assess_ilr_abilities(text):
         "Context Appropriateness": context_level
     }
 
-# NEW: Transcribe uploaded audio
-def transcribe_audio_file(audio_file):
+# NEW: Transcribe uploaded audio file
+def transcribe_audio_file(file_path):
     recognizer = sr.Recognizer()
-    with sr.AudioFile(audio_file) as source:
+    with sr.AudioFile(file_path) as source:
         audio_data = recognizer.record(source)
         try:
             return recognizer.recognize_google(audio_data)
@@ -102,9 +102,18 @@ elif input_method == "Upload Audio File":
     uploaded_audio = st.file_uploader("Upload an audio file (.wav or .mp3)", type=["wav", "mp3"])
     if uploaded_audio is not None:
         st.audio(uploaded_audio, format="audio/wav")
-        user_input = transcribe_audio_file(uploaded_audio)
+        
+        # Save uploaded file temporarily for processing
+        temp_audio_path = "temp_audio.mp3"
+        with open(temp_audio_path, "wb") as f:
+            f.write(uploaded_audio.read())
+
+        user_input = transcribe_audio_file(temp_audio_path)
         st.success("Transcription:")
         st.write(user_input)
+
+        os.remove(temp_audio_path)
+
         if user_input.strip():
             detected_lang = detect(user_input)
         else:
@@ -144,4 +153,4 @@ if st.button("🚀 Analyze"):
 
         speak_text(translated_summary, lang_code=detected_lang.split("-")[0])
     else:
-        st.warning("Please input or record something first.")
+        st.warning("Please input or upload something first.")

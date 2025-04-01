@@ -63,16 +63,10 @@ def assess_ilr_abilities(text):
         "Context Appropriateness": context_level
     }
 
-# Speech-to-text
+# Speech-to-text (note: not supported on Streamlit Cloud yet)
 def transcribe_speech(language_code):
-    recognizer = sr.Recognizer()
-    with sr.Microphone() as source:
-        st.info("Listening...")
-        audio_data = recognizer.listen(source)
-        try:
-            return recognizer.recognize_google(audio_data, language=language_code)
-        except:
-            return "Could not process the speech."
+    st.warning("🎤 Microphone input is only available when running the app locally.")
+    return ""
 
 # Text-to-speech
 def speak_text(text, lang_code):
@@ -105,11 +99,16 @@ if st.button("🚀 Analyze"):
     if user_input.strip():
         st.markdown(f"**Detected Language:** `{detected_lang}`")
 
-        try:
-            translated_text = translate(user_input, src_lang=detected_lang, tgt_lang="en")
-        except:
-            st.error("Translation model not available for this language.")
+        # Safe translation fallback
+        if detected_lang == "en":
             translated_text = user_input
+            st.info("Input is in English — no translation needed.")
+        else:
+            try:
+                translated_text = translate(user_input, src_lang=detected_lang, tgt_lang="en")
+            except:
+                st.warning("Translation model not available — using original input.")
+                translated_text = user_input
 
         st.markdown("**Translated to English:**")
         st.write(translated_text)

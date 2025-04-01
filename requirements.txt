@@ -7,3 +7,4 @@ speechrecognition
 gtts
 langdetect
 pyttsx3
+pydub

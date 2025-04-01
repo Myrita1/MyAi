@@ -8,13 +8,11 @@ from langdetect import detect
 from gtts import gTTS
 import os
 
-# Setup NLTK
-nltk_data_path = os.path.join(os.getcwd(), "nltk_data")
-if not os.path.exists(nltk_data_path):
-    os.mkdir(nltk_data_path)
-
-nltk.download('punkt', download_dir=nltk_data_path)
-nltk.data.path.append(nltk_data_path)
+# Safe NLTK download (persistent on Streamlit Cloud)
+nltk_data_dir = os.path.expanduser(os.path.join("~", "nltk_data"))
+os.makedirs(nltk_data_dir, exist_ok=True)
+nltk.download("punkt", download_dir=nltk_data_dir)
+nltk.data.path.append(nltk_data_dir)
 
 # Load multilingual sentiment model
 classifier = pipeline("text-classification", model="nlptown/bert-base-multilingual-uncased-sentiment")

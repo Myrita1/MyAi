@@ -1,0 +1,10 @@
+streamlit
+transformers
+nltk
+textblob
+speechrecognition
+pyttsx3
+rasa
+torch
+langdetect
+gtts

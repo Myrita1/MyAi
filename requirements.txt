@@ -1,10 +1,9 @@
 streamlit
 transformers
+torch
 nltk
 textblob
 speechrecognition
-pyttsx3
-rasa
-torch
-langdetect
 gtts
+langdetect
+pyttsx3

@@ -6,9 +6,10 @@ from nltk.tokenize import sent_tokenize
 import speech_recognition as sr
 from langdetect import detect
 from gtts import gTTS
+from pydub import AudioSegment
 import os
 
-# Safe NLTK download path for Streamlit Cloud
+# Setup NLTK
 nltk_data_path = os.path.join(os.getcwd(), "nltk_data")
 if not os.path.exists(nltk_data_path):
     os.mkdir(nltk_data_path)
@@ -31,7 +32,7 @@ def translate(text, src_lang, tgt_lang="en"):
 def back_translate(text, tgt_lang, src_lang="en"):
     return translate(text, src_lang=src_lang, tgt_lang=tgt_lang)
 
-# ILR scoring logic
+# ILR scoring
 def assess_ilr_abilities(text):
     sentences = sent_tokenize(text)
     blob = TextBlob(text)
@@ -63,10 +64,19 @@ def assess_ilr_abilities(text):
         "Context Appropriateness": context_level
     }
 
-# NEW: Transcribe uploaded audio file
-def transcribe_audio_file(file_path):
+# Transcribe uploaded audio
+def transcribe_audio_file(uploaded_file):
+    original_path = "temp_audio.mp3"
+    wav_path = "converted.wav"
+
+    with open(original_path, "wb") as f:
+        f.write(uploaded_file.read())
+
+    audio = AudioSegment.from_file(original_path)
+    audio.export(wav_path, format="wav")
+
     recognizer = sr.Recognizer()
-    with sr.AudioFile(file_path) as source:
+    with sr.AudioFile(wav_path) as source:
         audio_data = recognizer.record(source)
         try:
             return recognizer.recognize_google(audio_data)
@@ -74,14 +84,17 @@ def transcribe_audio_file(file_path):
             return "Could not understand the audio."
         except sr.RequestError:
             return "Speech Recognition service unavailable."
+        finally:
+            os.remove(original_path)
+            os.remove(wav_path)
 
-# Text-to-speech
+# Text-to-speech feedback
 def speak_text(text, lang_code):
     tts = gTTS(text=text, lang=lang_code)
     tts.save("feedback.mp3")
     os.system("start feedback.mp3" if os.name == "nt" else "afplay feedback.mp3")
 
-# Streamlit app
+# Streamlit app UI
 st.set_page_config(page_title="ILR Multilingual Language Assessment", layout="centered")
 st.title("🌍 Multilingual ILR Language Assessment Tool")
 st.markdown("Evaluate your text or speech based on ILR levels across 30+ languages.")
@@ -102,18 +115,9 @@ elif input_method == "Upload Audio File":
     uploaded_audio = st.file_uploader("Upload an audio file (.wav or .mp3)", type=["wav", "mp3"])
     if uploaded_audio is not None:
         st.audio(uploaded_audio, format="audio/wav")
-        
-        # Save uploaded file temporarily for processing
-        temp_audio_path = "temp_audio.mp3"
-        with open(temp_audio_path, "wb") as f:
-            f.write(uploaded_audio.read())
-
-        user_input = transcribe_audio_file(temp_audio_path)
+        user_input = transcribe_audio_file(uploaded_audio)
         st.success("Transcription:")
         st.write(user_input)
-
-        os.remove(temp_audio_path)
-
         if user_input.strip():
             detected_lang = detect(user_input)
         else:

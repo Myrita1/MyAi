@@ -19,7 +19,7 @@ nltk.data.path.append(nltk_data_path)
 # Load multilingual sentiment model
 classifier = pipeline("text-classification", model="nlptown/bert-base-multilingual-uncased-sentiment")
 
-# Translate using MarianMT
+# Translation using MarianMT
 def translate(text, src_lang, tgt_lang="en"):
     model_name = f"Helsinki-NLP/opus-mt-{src_lang}-{tgt_lang}"
     tokenizer = MarianTokenizer.from_pretrained(model_name)
@@ -31,7 +31,7 @@ def translate(text, src_lang, tgt_lang="en"):
 def back_translate(text, tgt_lang, src_lang="en"):
     return translate(text, src_lang=src_lang, tgt_lang=tgt_lang)
 
-# ILR scoring function
+# ILR scoring logic
 def assess_ilr_abilities(text):
     sentences = sent_tokenize(text)
     blob = TextBlob(text)
@@ -63,7 +63,7 @@ def assess_ilr_abilities(text):
         "Context Appropriateness": context_level
     }
 
-# Speech-to-text (note: not supported on Streamlit Cloud yet)
+# Speech-to-text (only works locally)
 def transcribe_speech(language_code):
     st.warning("🎤 Microphone input is only available when running the app locally.")
     return ""
@@ -74,7 +74,7 @@ def speak_text(text, lang_code):
     tts.save("feedback.mp3")
     os.system("start feedback.mp3" if os.name == "nt" else "afplay feedback.mp3")
 
-# Streamlit app UI
+# Streamlit app
 st.set_page_config(page_title="ILR Multilingual Language Assessment", layout="centered")
 st.title("🌍 Multilingual ILR Language Assessment Tool")
 st.markdown("Evaluate your text or speech based on ILR levels across 30+ languages.")
@@ -85,21 +85,29 @@ detected_lang = "en"
 
 if input_method == "Type Text":
     user_input = st.text_area("Enter text:")
-    if user_input:
+    if user_input.strip():
         detected_lang = detect(user_input)
+    else:
+        detected_lang = "en"
+        st.warning("No valid input to detect language. Defaulting to English.")
+
 elif input_method == "Use Microphone":
     lang_code = st.text_input("Enter language code (e.g., fr-FR, ar-MA, es-ES):", value="en-US")
     if st.button("🎙️ Record"):
         user_input = transcribe_speech(lang_code)
         st.success("Transcription:")
         st.write(user_input)
-        detected_lang = detect(user_input)
+        if user_input.strip():
+            detected_lang = detect(user_input)
+        else:
+            detected_lang = "en"
+            st.warning("No valid input to detect language. Defaulting to English.")
 
 if st.button("🚀 Analyze"):
     if user_input.strip():
         st.markdown(f"**Detected Language:** `{detected_lang}`")
 
-        # Safe translation fallback
+        # Safe translation
         if detected_lang == "en":
             translated_text = user_input
             st.info("Input is in English — no translation needed.")

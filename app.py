@@ -1,6 +1,6 @@
 import streamlit as st
 from transformers import pipeline, MarianMTModel, MarianTokenizer
-from textblob import TextBlob
+from textblob import TextBlob, download_corpora
 import nltk
 from nltk.tokenize.punkt import PunktSentenceTokenizer, PunktParameters
 import speech_recognition as sr
@@ -8,11 +8,12 @@ from langdetect import detect
 from gtts import gTTS
 import os
 
-# Safe NLTK download (persistent on Streamlit Cloud)
+# Setup for NLTK + TextBlob corpora
 nltk_data_dir = os.path.expanduser(os.path.join("~", "nltk_data"))
 os.makedirs(nltk_data_dir, exist_ok=True)
 nltk.download("punkt", download_dir=nltk_data_dir)
 nltk.data.path.append(nltk_data_dir)
+download_corpora.download_all()
 
 # Load multilingual sentiment model
 classifier = pipeline("text-classification", model="nlptown/bert-base-multilingual-uncased-sentiment")
@@ -29,7 +30,7 @@ def translate(text, src_lang, tgt_lang="en"):
 def back_translate(text, tgt_lang, src_lang="en"):
     return translate(text, src_lang=src_lang, tgt_lang=tgt_lang)
 
-# ILR scoring logic (final fix using explicit Punkt tokenizer)
+# ILR scoring logic
 def assess_ilr_abilities(text):
     punkt_param = PunktParameters()
     tokenizer = PunktSentenceTokenizer(punkt_param)
@@ -64,7 +65,7 @@ def assess_ilr_abilities(text):
         "Context Appropriateness": context_level
     }
 
-# Transcribe WAV file only
+# Speech-to-text for WAV
 def transcribe_audio_file(uploaded_file):
     wav_path = "uploaded_audio.wav"
     with open(wav_path, "wb") as f:
@@ -82,13 +83,13 @@ def transcribe_audio_file(uploaded_file):
         finally:
             os.remove(wav_path)
 
-# Text-to-speech
+# Text-to-speech output
 def speak_text(text, lang_code):
     tts = gTTS(text=text, lang=lang_code)
     tts.save("feedback.mp3")
     os.system("start feedback.mp3" if os.name == "nt" else "afplay feedback.mp3")
 
-# Streamlit app UI
+# Streamlit app interface
 st.set_page_config(page_title="ILR Multilingual Language Assessment", layout="centered")
 st.title("🌍 Multilingual ILR Language Assessment Tool")
 st.markdown("Evaluate your text or speech based on ILR levels across 30+ languages.")

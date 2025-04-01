@@ -63,10 +63,17 @@ def assess_ilr_abilities(text):
         "Context Appropriateness": context_level
     }
 
-# Speech-to-text (only works locally)
-def transcribe_speech(language_code):
-    st.warning("🎤 Microphone input is only available when running the app locally.")
-    return ""
+# NEW: Transcribe uploaded audio
+def transcribe_audio_file(audio_file):
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(audio_file) as source:
+        audio_data = recognizer.record(source)
+        try:
+            return recognizer.recognize_google(audio_data)
+        except sr.UnknownValueError:
+            return "Could not understand the audio."
+        except sr.RequestError:
+            return "Speech Recognition service unavailable."
 
 # Text-to-speech
 def speak_text(text, lang_code):
@@ -79,7 +86,7 @@ st.set_page_config(page_title="ILR Multilingual Language Assessment", layout="ce
 st.title("🌍 Multilingual ILR Language Assessment Tool")
 st.markdown("Evaluate your text or speech based on ILR levels across 30+ languages.")
 
-input_method = st.radio("Choose Input Type", ["Type Text", "Use Microphone"])
+input_method = st.radio("Choose Input Type", ["Type Text", "Upload Audio File"])
 user_input = ""
 detected_lang = "en"
 
@@ -91,10 +98,11 @@ if input_method == "Type Text":
         detected_lang = "en"
         st.warning("No valid input to detect language. Defaulting to English.")
 
-elif input_method == "Use Microphone":
-    lang_code = st.text_input("Enter language code (e.g., fr-FR, ar-MA, es-ES):", value="en-US")
-    if st.button("🎙️ Record"):
-        user_input = transcribe_speech(lang_code)
+elif input_method == "Upload Audio File":
+    uploaded_audio = st.file_uploader("Upload an audio file (.wav or .mp3)", type=["wav", "mp3"])
+    if uploaded_audio is not None:
+        st.audio(uploaded_audio, format="audio/wav")
+        user_input = transcribe_audio_file(uploaded_audio)
         st.success("Transcription:")
         st.write(user_input)
         if user_input.strip():
@@ -107,7 +115,6 @@ if st.button("🚀 Analyze"):
     if user_input.strip():
         st.markdown(f"**Detected Language:** `{detected_lang}`")
 
-        # Safe translation
         if detected_lang == "en":
             translated_text = user_input
             st.info("Input is in English — no translation needed.")

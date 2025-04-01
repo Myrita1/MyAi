@@ -8,12 +8,18 @@ from langdetect import detect
 from gtts import gTTS
 import os
 
-nltk.download('punkt')
+# Safe NLTK download path for Streamlit Cloud
+nltk_data_path = os.path.join(os.getcwd(), "nltk_data")
+if not os.path.exists(nltk_data_path):
+    os.mkdir(nltk_data_path)
 
-# Load sentiment model (English-based for now)
+nltk.download('punkt', download_dir=nltk_data_path)
+nltk.data.path.append(nltk_data_path)
+
+# Load multilingual sentiment model
 classifier = pipeline("text-classification", model="nlptown/bert-base-multilingual-uncased-sentiment")
 
-# Translation function using Hugging Face MarianMT
+# Translate using MarianMT
 def translate(text, src_lang, tgt_lang="en"):
     model_name = f"Helsinki-NLP/opus-mt-{src_lang}-{tgt_lang}"
     tokenizer = MarianTokenizer.from_pretrained(model_name)
@@ -25,7 +31,7 @@ def translate(text, src_lang, tgt_lang="en"):
 def back_translate(text, tgt_lang, src_lang="en"):
     return translate(text, src_lang=src_lang, tgt_lang=tgt_lang)
 
-# ILR Assessment Core Logic
+# ILR scoring function
 def assess_ilr_abilities(text):
     sentences = sent_tokenize(text)
     blob = TextBlob(text)
@@ -57,7 +63,7 @@ def assess_ilr_abilities(text):
         "Context Appropriateness": context_level
     }
 
-# Multilingual Speech Recognition
+# Speech-to-text
 def transcribe_speech(language_code):
     recognizer = sr.Recognizer()
     with sr.Microphone() as source:
@@ -68,13 +74,13 @@ def transcribe_speech(language_code):
         except:
             return "Could not process the speech."
 
-# Multilingual Text-to-Speech
+# Text-to-speech
 def speak_text(text, lang_code):
     tts = gTTS(text=text, lang=lang_code)
     tts.save("feedback.mp3")
     os.system("start feedback.mp3" if os.name == "nt" else "afplay feedback.mp3")
 
-# Streamlit App UI
+# Streamlit app UI
 st.set_page_config(page_title="ILR Multilingual Language Assessment", layout="centered")
 st.title("🌍 Multilingual ILR Language Assessment Tool")
 st.markdown("Evaluate your text or speech based on ILR levels across 30+ languages.")
@@ -99,7 +105,6 @@ if st.button("🚀 Analyze"):
     if user_input.strip():
         st.markdown(f"**Detected Language:** `{detected_lang}`")
 
-        # Translate to English
         try:
             translated_text = translate(user_input, src_lang=detected_lang, tgt_lang="en")
         except:
@@ -109,13 +114,11 @@ if st.button("🚀 Analyze"):
         st.markdown("**Translated to English:**")
         st.write(translated_text)
 
-        # ILR Scoring
         results = assess_ilr_abilities(translated_text)
         st.subheader("ILR Assessment Results:")
         for k, v in results.items():
             st.markdown(f"- **{k}:** {v}")
 
-        # Feedback Summary
         summary = ", ".join([f"{k} is {v}" for k, v in results.items()])
         try:
             translated_summary = back_translate(summary, tgt_lang=detected_lang)

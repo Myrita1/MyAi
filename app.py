@@ -6,7 +6,6 @@ from nltk.tokenize import sent_tokenize
 import speech_recognition as sr
 from langdetect import detect
 from gtts import gTTS
-from pydub import AudioSegment
 import os
 
 # Setup NLTK
@@ -32,7 +31,7 @@ def translate(text, src_lang, tgt_lang="en"):
 def back_translate(text, tgt_lang, src_lang="en"):
     return translate(text, src_lang=src_lang, tgt_lang=tgt_lang)
 
-# ILR scoring
+# ILR scoring logic
 def assess_ilr_abilities(text):
     sentences = sent_tokenize(text)
     blob = TextBlob(text)
@@ -64,16 +63,11 @@ def assess_ilr_abilities(text):
         "Context Appropriateness": context_level
     }
 
-# Transcribe uploaded audio
+# Transcribe WAV file only
 def transcribe_audio_file(uploaded_file):
-    original_path = "temp_audio.mp3"
-    wav_path = "converted.wav"
-
-    with open(original_path, "wb") as f:
+    wav_path = "uploaded_audio.wav"
+    with open(wav_path, "wb") as f:
         f.write(uploaded_file.read())
-
-    audio = AudioSegment.from_file(original_path)
-    audio.export(wav_path, format="wav")
 
     recognizer = sr.Recognizer()
     with sr.AudioFile(wav_path) as source:
@@ -85,10 +79,9 @@ def transcribe_audio_file(uploaded_file):
         except sr.RequestError:
             return "Speech Recognition service unavailable."
         finally:
-            os.remove(original_path)
             os.remove(wav_path)
 
-# Text-to-speech feedback
+# Text-to-speech
 def speak_text(text, lang_code):
     tts = gTTS(text=text, lang=lang_code)
     tts.save("feedback.mp3")
@@ -99,7 +92,7 @@ st.set_page_config(page_title="ILR Multilingual Language Assessment", layout="ce
 st.title("🌍 Multilingual ILR Language Assessment Tool")
 st.markdown("Evaluate your text or speech based on ILR levels across 30+ languages.")
 
-input_method = st.radio("Choose Input Type", ["Type Text", "Upload Audio File"])
+input_method = st.radio("Choose Input Type", ["Type Text", "Upload WAV File"])
 user_input = ""
 detected_lang = "en"
 
@@ -111,8 +104,8 @@ if input_method == "Type Text":
         detected_lang = "en"
         st.warning("No valid input to detect language. Defaulting to English.")
 
-elif input_method == "Upload Audio File":
-    uploaded_audio = st.file_uploader("Upload an audio file (.wav or .mp3)", type=["wav", "mp3"])
+elif input_method == "Upload WAV File":
+    uploaded_audio = st.file_uploader("Upload a WAV file only", type=["wav"])
     if uploaded_audio is not None:
         st.audio(uploaded_audio, format="audio/wav")
         user_input = transcribe_audio_file(uploaded_audio)

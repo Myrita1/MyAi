@@ -1,6 +1,9 @@
 import streamlit as st
+st.set_page_config(page_title="ILR Multilingual Language Assessment", layout="centered")
+
 import torch
-import torchaudio
+import numpy as np
+from pydub import AudioSegment
 from transformers import (
     pipeline,
     MarianMTModel,
@@ -25,7 +28,16 @@ download_corpora.download_all()
 # Load multilingual sentiment model
 classifier = pipeline("text-classification", model="nlptown/bert-base-multilingual-uncased-sentiment")
 
-# Load translation model dynamically
+# Load Wav2Vec2 model once
+@st.cache_resource
+def load_wav2vec_model():
+    tokenizer = Wav2Vec2Tokenizer.from_pretrained("facebook/wav2vec2-base-960h")
+    model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h")
+    return tokenizer, model
+
+tokenizer_wav2vec, model_wav2vec = load_wav2vec_model()
+
+# Translate
 def translate(text, src_lang, tgt_lang="en"):
     model_name = f"Helsinki-NLP/opus-mt-{src_lang}-{tgt_lang}"
     tokenizer = MarianTokenizer.from_pretrained(model_name)
@@ -72,34 +84,19 @@ def assess_ilr_abilities(text):
         "Context Appropriateness": context_level
     }
 
-# Load Wav2Vec2 model once for transcription
-@st.cache_resource
-def load_wav2vec_model():
-    tokenizer = Wav2Vec2Tokenizer.from_pretrained("facebook/wav2vec2-base-960h")
-    model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h")
-    return tokenizer, model
-
-tokenizer_wav2vec, model_wav2vec = load_wav2vec_model()
-
-# Transcription using Hugging Face Wav2Vec2
+# Transcription using pydub instead of torchaudio
 def transcribe_audio_file(uploaded_file):
-    wav_path = "temp_audio.wav"
-    with open(wav_path, "wb") as f:
-        f.write(uploaded_file.read())
+    audio = AudioSegment.from_file(uploaded_file, format="wav")
+    audio = audio.set_channels(1).set_frame_rate(16000)
 
-    waveform, sample_rate = torchaudio.load(wav_path)
+    samples = np.array(audio.get_array_of_samples()).astype(np.float32) / 32768.0
+    input_values = tokenizer_wav2vec(samples, return_tensors='pt', padding='longest').input_values
 
-    if sample_rate != 16000:
-        resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)
-        waveform = resampler(waveform)
-
-    input_values = tokenizer_wav2vec(waveform.squeeze().numpy(), return_tensors='pt').input_values
     with torch.no_grad():
         logits = model_wav2vec(input_values).logits
     predicted_ids = torch.argmax(logits, dim=-1)
     transcription = tokenizer_wav2vec.batch_decode(predicted_ids)[0]
 
-    os.remove(wav_path)
     return transcription
 
 # Text-to-speech
@@ -108,8 +105,7 @@ def speak_text(text, lang_code):
     tts.save("feedback.mp3")
     os.system("start feedback.mp3" if os.name == "nt" else "afplay feedback.mp3")
 
-# Streamlit UI
-st.set_page_config(page_title="ILR Multilingual Language Assessment", layout="centered")
+# Streamlit app interface
 st.title("🌍 Multilingual ILR Language Assessment Tool")
 st.markdown("Evaluate your text or speech based on ILR levels across 30+ languages.")
 

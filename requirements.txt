@@ -1,10 +1,8 @@
 streamlit
 transformers
 torch
-nltk
+torchaudio
 textblob
-speechrecognition
+nltk
 gtts
 langdetect
-pyttsx3
-pydub

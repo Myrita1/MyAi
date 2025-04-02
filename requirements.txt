@@ -1,8 +1,9 @@
 streamlit
 transformers
 torch
-torchaudio
+pydub
 textblob
 nltk
 gtts
 langdetect
+scipy

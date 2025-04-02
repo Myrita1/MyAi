@@ -18,17 +18,16 @@ from langdetect import detect
 from gtts import gTTS
 import os
 
-# Setup for NLTK + TextBlob corpora
+# Setup NLTK + TextBlob
 nltk_data_dir = os.path.expanduser(os.path.join("~", "nltk_data"))
 os.makedirs(nltk_data_dir, exist_ok=True)
 nltk.download("punkt", download_dir=nltk_data_dir)
 nltk.data.path.append(nltk_data_dir)
 download_corpora.download_all()
 
-# Load multilingual sentiment model
+# Load models
 classifier = pipeline("text-classification", model="nlptown/bert-base-multilingual-uncased-sentiment")
 
-# Load Wav2Vec2 model once
 @st.cache_resource
 def load_wav2vec_model():
     tokenizer = Wav2Vec2Tokenizer.from_pretrained("facebook/wav2vec2-base-960h")
@@ -37,7 +36,38 @@ def load_wav2vec_model():
 
 tokenizer_wav2vec, model_wav2vec = load_wav2vec_model()
 
-# Translate
+# ILR Criteria Descriptions
+ILR_LEVELS = {
+    "Functionality": {
+        "Emerging": "Performs basic language tasks like greetings and introducing oneself. Can understand simple questions and statements.",
+        "Functional": "Handles routine tasks requiring a simple and direct exchange of information on familiar topics. Can describe in simple terms aspects of their background, immediate environment, and basic needs."
+    },
+    "Content": {
+        "Basic": "Uses limited vocabulary and common expressions. Stays within concrete topics.",
+        "Moderate": "Discusses topics beyond immediate needs. Shows some ability to connect ideas and express opinions.",
+        "Advanced": "Communicates with a wide range of vocabulary. Handles unfamiliar topics with some fluency."
+    },
+    "Accuracy": {
+        "Developing": "Frequent grammatical errors. Meaning is often unclear.",
+        "Neutral Accuracy": "Occasional errors. Meaning is generally clear.",
+        "Polished": "Grammar and usage are mostly accurate with minor, non-impeding errors.",
+        "Imprecise": "Errors sometimes interfere with communication."
+    },
+    "Context Appropriateness": {
+        "Appropriate": "Language is well-suited to the context and audience. Registers and styles are used correctly.",
+        "Inappropriate": "Language may be too formal, too informal, or contextually inaccurate. Misuse of expressions common."
+    }
+}
+
+# Feedback generator
+def generate_detailed_feedback(results):
+    feedback_lines = []
+    for category, level in results.items():
+        explanation = ILR_LEVELS.get(category, {}).get(level, "No descriptor available.")
+        feedback_lines.append(f"- **{category} ({level}):** {explanation}")
+    return "\n".join(feedback_lines)
+
+# Translation
 def translate(text, src_lang, tgt_lang="en"):
     model_name = f"Helsinki-NLP/opus-mt-{src_lang}-{tgt_lang}"
     tokenizer = MarianTokenizer.from_pretrained(model_name)
@@ -49,12 +79,11 @@ def translate(text, src_lang, tgt_lang="en"):
 def back_translate(text, tgt_lang, src_lang="en"):
     return translate(text, src_lang=src_lang, tgt_lang=tgt_lang)
 
-# ILR scoring logic
+# ILR Analysis
 def assess_ilr_abilities(text):
     punkt_param = PunktParameters()
     tokenizer = PunktSentenceTokenizer(punkt_param)
     sentences = tokenizer.tokenize(text)
-
     blob = TextBlob(text)
 
     function_score = sum(1 for s in sentences if len(s.split()) > 10)
@@ -84,20 +113,16 @@ def assess_ilr_abilities(text):
         "Context Appropriateness": context_level
     }
 
-# Transcription using pydub instead of torchaudio
+# Transcribe audio using Wav2Vec2
 def transcribe_audio_file(uploaded_file):
     audio = AudioSegment.from_file(uploaded_file, format="wav")
     audio = audio.set_channels(1).set_frame_rate(16000)
-
     samples = np.array(audio.get_array_of_samples()).astype(np.float32) / 32768.0
     input_values = tokenizer_wav2vec(samples, return_tensors='pt', padding='longest').input_values
-
     with torch.no_grad():
         logits = model_wav2vec(input_values).logits
     predicted_ids = torch.argmax(logits, dim=-1)
-    transcription = tokenizer_wav2vec.batch_decode(predicted_ids)[0]
-
-    return transcription
+    return tokenizer_wav2vec.batch_decode(predicted_ids)[0]
 
 # Text-to-speech
 def speak_text(text, lang_code):
@@ -105,7 +130,7 @@ def speak_text(text, lang_code):
     tts.save("feedback.mp3")
     os.system("start feedback.mp3" if os.name == "nt" else "afplay feedback.mp3")
 
-# Streamlit app interface
+# --- Streamlit Interface ---
 st.title("🌍 Multilingual ILR Language Assessment Tool")
 st.markdown("Evaluate your text or speech based on ILR levels across 30+ languages.")
 
@@ -118,21 +143,16 @@ if input_method == "Type Text":
     if user_input.strip():
         detected_lang = detect(user_input)
     else:
-        detected_lang = "en"
-        st.warning("No valid input to detect language. Defaulting to English.")
+        st.warning("No input detected. Defaulting to English.")
 
 elif input_method == "Upload WAV File":
-    uploaded_audio = st.file_uploader("Upload a WAV file only", type=["wav"])
-    if uploaded_audio is not None:
+    uploaded_audio = st.file_uploader("Upload a WAV file", type=["wav"])
+    if uploaded_audio:
         st.audio(uploaded_audio, format="audio/wav")
         user_input = transcribe_audio_file(uploaded_audio)
         st.success("Transcription:")
         st.write(user_input)
-        if user_input.strip():
-            detected_lang = detect(user_input)
-        else:
-            detected_lang = "en"
-            st.warning("No valid input to detect language. Defaulting to English.")
+        detected_lang = detect(user_input) if user_input.strip() else "en"
 
 if st.button("🚀 Analyze"):
     if user_input.strip():
@@ -145,16 +165,16 @@ if st.button("🚀 Analyze"):
             try:
                 translated_text = translate(user_input, src_lang=detected_lang, tgt_lang="en")
             except:
-                st.warning("Translation model not available — using original input.")
                 translated_text = user_input
+                st.warning("Translation failed. Using original input.")
 
         st.markdown("**Translated to English:**")
         st.write(translated_text)
 
         results = assess_ilr_abilities(translated_text)
         st.subheader("ILR Assessment Results:")
-        for k, v in results.items():
-            st.markdown(f"- **{k}:** {v}")
+        st.markdown("### Detailed ILR Feedback:")
+        st.markdown(generate_detailed_feedback(results))
 
         summary = ", ".join([f"{k} is {v}" for k, v in results.items()])
         try:

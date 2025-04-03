@@ -25,7 +25,7 @@ nltk.download("punkt", download_dir=nltk_data_dir)
 nltk.data.path.append(nltk_data_dir)
 download_corpora.download_all()
 
-# Load models
+# Load sentiment classifier
 classifier = pipeline("text-classification", model="nlptown/bert-base-multilingual-uncased-sentiment")
 
 @st.cache_resource
@@ -36,7 +36,13 @@ def load_wav2vec_model():
 
 tokenizer_wav2vec, model_wav2vec = load_wav2vec_model()
 
-# ILR Criteria Descriptions
+# Language code mapping for TTS compatibility
+LANG_CODE_MAP = {
+    "en": "en", "fr": "fr", "es": "es", "ar": "ar", "zh-cn": "zh", "ru": "ru",
+    "pt": "pt", "de": "de", "ja": "ja", "ko": "ko", "it": "it"
+}
+
+# ILR Descriptors
 ILR_LEVELS = {
     "Functionality": {
         "Emerging": "Performs basic language tasks like greetings and introducing oneself. Can understand simple questions and statements.",
@@ -59,15 +65,12 @@ ILR_LEVELS = {
     }
 }
 
-# Feedback generator
 def generate_detailed_feedback(results):
-    feedback_lines = []
-    for category, level in results.items():
-        explanation = ILR_LEVELS.get(category, {}).get(level, "No descriptor available.")
-        feedback_lines.append(f"- **{category} ({level}):** {explanation}")
-    return "\n".join(feedback_lines)
+    return "\n".join([
+        f"- **{cat} ({lvl}):** {ILR_LEVELS.get(cat, {}).get(lvl, 'No descriptor available.')}"
+        for cat, lvl in results.items()
+    ])
 
-# Translation
 def translate(text, src_lang, tgt_lang="en"):
     model_name = f"Helsinki-NLP/opus-mt-{src_lang}-{tgt_lang}"
     tokenizer = MarianTokenizer.from_pretrained(model_name)
@@ -79,7 +82,6 @@ def translate(text, src_lang, tgt_lang="en"):
 def back_translate(text, tgt_lang, src_lang="en"):
     return translate(text, src_lang=src_lang, tgt_lang=tgt_lang)
 
-# ILR Analysis
 def assess_ilr_abilities(text):
     punkt_param = PunktParameters()
     tokenizer = PunktSentenceTokenizer(punkt_param)
@@ -113,9 +115,8 @@ def assess_ilr_abilities(text):
         "Context Appropriateness": context_level
     }
 
-# Transcribe audio using Wav2Vec2
 def transcribe_audio_file(uploaded_file):
-    audio = AudioSegment.from_file(uploaded_file, format="wav")
+    audio = AudioSegment.from_file(uploaded_file)
     audio = audio.set_channels(1).set_frame_rate(16000)
     samples = np.array(audio.get_array_of_samples()).astype(np.float32) / 32768.0
     input_values = tokenizer_wav2vec(samples, return_tensors='pt', padding='longest').input_values
@@ -124,9 +125,9 @@ def transcribe_audio_file(uploaded_file):
     predicted_ids = torch.argmax(logits, dim=-1)
     return tokenizer_wav2vec.batch_decode(predicted_ids)[0]
 
-# Text-to-speech
 def speak_text(text, lang_code):
-    tts = gTTS(text=text, lang=lang_code)
+    lang = LANG_CODE_MAP.get(lang_code, "en")
+    tts = gTTS(text=text, lang=lang)
     tts.save("feedback.mp3")
     os.system("start feedback.mp3" if os.name == "nt" else "afplay feedback.mp3")
 
@@ -134,7 +135,7 @@ def speak_text(text, lang_code):
 st.title("🌍 Multilingual ILR Language Assessment Tool")
 st.markdown("Evaluate your text or speech based on ILR levels across 30+ languages.")
 
-input_method = st.radio("Choose Input Type", ["Type Text", "Upload WAV File"])
+input_method = st.radio("Choose Input Type", ["Type Text", "Upload Audio File"])
 user_input = ""
 detected_lang = "en"
 
@@ -145,11 +146,12 @@ if input_method == "Type Text":
     else:
         st.warning("No input detected. Defaulting to English.")
 
-elif input_method == "Upload WAV File":
+elif input_method == "Upload Audio File":
     uploaded_audio = st.file_uploader("Upload a WAV file", type=["wav"])
     if uploaded_audio:
         st.audio(uploaded_audio, format="audio/wav")
-        user_input = transcribe_audio_file(uploaded_audio)
+        with st.spinner("Transcribing audio..."):
+            user_input = transcribe_audio_file(uploaded_audio)
         st.success("Transcription:")
         st.write(user_input)
         detected_lang = detect(user_input) if user_input.strip() else "en"
@@ -158,33 +160,29 @@ if st.button("🚀 Analyze"):
     if user_input.strip():
         st.markdown(f"**Detected Language:** `{detected_lang}`")
 
-        if detected_lang == "en":
-            translated_text = user_input
-            st.info("Input is in English — no translation needed.")
-        else:
+        with st.spinner("Translating and analyzing..."):
             try:
                 translated_text = translate(user_input, src_lang=detected_lang, tgt_lang="en")
-            except:
+                st.markdown("**Translated to English:**")
+                st.write(translated_text)
+            except Exception as e:
                 translated_text = user_input
-                st.warning("Translation failed. Using original input.")
+                st.warning(f"Translation failed: {e}")
 
-        st.markdown("**Translated to English:**")
-        st.write(translated_text)
+            results = assess_ilr_abilities(translated_text)
+            st.subheader("ILR Assessment Results:")
+            st.markdown("### Detailed ILR Feedback:")
+            st.markdown(generate_detailed_feedback(results))
 
-        results = assess_ilr_abilities(translated_text)
-        st.subheader("ILR Assessment Results:")
-        st.markdown("### Detailed ILR Feedback:")
-        st.markdown(generate_detailed_feedback(results))
+            summary = ", ".join([f"{k} is {v}" for k, v in results.items()])
+            try:
+                translated_summary = back_translate(summary, tgt_lang=detected_lang)
+            except:
+                translated_summary = summary
 
-        summary = ", ".join([f"{k} is {v}" for k, v in results.items()])
-        try:
-            translated_summary = back_translate(summary, tgt_lang=detected_lang)
-        except:
-            translated_summary = summary
+            st.markdown("**Feedback (translated):**")
+            st.write(translated_summary)
 
-        st.markdown("**Feedback (translated):**")
-        st.write(translated_summary)
-
-        speak_text(translated_summary, lang_code=detected_lang.split("-")[0])
+            speak_text(translated_summary, lang_code=detected_lang.split("-")[0])
     else:
         st.warning("Please input or upload something first.")

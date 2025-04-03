@@ -31,16 +31,20 @@ def get_sentiment_label(blob):
 
 def translate(text, src_lang, tgt_lang="en"):
     try:
-        model_name = f"Helsinki-NLP/opus-mt-{src_lang}-{tgt_lang}"
+        # Some environments need fixed model names
+        if src_lang == "ar" and tgt_lang == "en":
+            model_name = "Helsinki-NLP/opus-mt-ar-en"
+        else:
+            model_name = f"Helsinki-NLP/opus-mt-{src_lang}-{tgt_lang}"
         tokenizer = MarianTokenizer.from_pretrained(model_name)
         model = MarianMTModel.from_pretrained(model_name)
         tokens = tokenizer(text, return_tensors="pt", padding=True)
         translated = model.generate(**tokens)
         return tokenizer.decode(translated[0], skip_special_tokens=True)
-    except:
+    except Exception:
         try:
             return str(TextBlob(text).translate(from_lang=src_lang, to=tgt_lang))
-        except:
+        except Exception:
             return text
 
 def summarize_text(text):
@@ -90,6 +94,8 @@ if st.button("Analyze"):
                 translated_text = translate(user_input, src_lang=detected_lang, tgt_lang="en")
                 st.markdown("**Translated to English:**")
                 st.write(translated_text)
+                if translated_text.strip() == user_input.strip():
+                    st.warning("Translation failed. Using original input.")
             else:
                 translated_text = user_input
                 st.info("Input is in English — skipping translation.")

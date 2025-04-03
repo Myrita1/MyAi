@@ -25,10 +25,10 @@ nltk.data.path.append(nltk_data_dir)
 download_corpora.download_all()
 
 classifier = pipeline(
-    "text-classification",
-    model="nlptown/bert-base-multilingual-uncased-sentiment",
-    framework="pt"
+    "sentiment-analysis",
+    model="distilbert-base-uncased-finetuned-sst-2-english"
 )
+
 summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
 @st.cache_resource

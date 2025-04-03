@@ -1,20 +1,12 @@
 import streamlit as st
 import numpy as np
 import os
-import tempfile
-
-from pydub import AudioSegment
-from transformers import (
-    MarianMTModel,
-    MarianTokenizer,
-    Wav2Vec2ForCTC,
-    Wav2Vec2Tokenizer
-)
 from textblob import TextBlob, download_corpora
 import nltk
 from nltk.tokenize.punkt import PunktSentenceTokenizer, PunktParameters
 from langdetect import detect
 from gtts import gTTS
+from transformers import MarianMTModel, MarianTokenizer
 
 # Setup
 nltk_data_dir = os.path.expanduser(os.path.join("~", "nltk_data"))
@@ -22,14 +14,6 @@ os.makedirs(nltk_data_dir, exist_ok=True)
 nltk.download("punkt", download_dir=nltk_data_dir)
 nltk.data.path.append(nltk_data_dir)
 download_corpora.download_all()
-
-@st.cache_resource
-def load_wav2vec_model():
-    tokenizer = Wav2Vec2Tokenizer.from_pretrained("facebook/wav2vec2-base-960h")
-    model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h")
-    return tokenizer, model
-
-tokenizer_wav2vec, model_wav2vec = load_wav2vec_model()
 
 LANG_CODE_MAP = {
     "en": "en", "fr": "fr", "es": "es", "ar": "ar", "zh-cn": "zh", "ru": "ru",
@@ -84,18 +68,6 @@ def generate_ilr_level(text_blob, sentences, sentiment_label):
         level = 2
     return min(level, 5)
 
-def transcribe_audio_file(uploaded_file):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
-        tmp_file.write(uploaded_file.read())
-        tmp_path = tmp_file.name
-    audio = AudioSegment.from_file(tmp_path, format="wav")
-    audio = audio.set_channels(1).set_frame_rate(16000)
-    samples = np.array(audio.get_array_of_samples()).astype(np.float32) / 32768.0
-    input_values = tokenizer_wav2vec(samples, return_tensors='pt', padding='longest').input_values
-    logits = model_wav2vec(input_values).logits
-    predicted_ids = np.argmax(logits, axis=-1)
-    return tokenizer_wav2vec.batch_decode(predicted_ids)[0]
-
 def speak_text(text, lang_code):
     lang = LANG_CODE_MAP.get(lang_code, "en")
     tts = gTTS(text=text, lang=lang)
@@ -106,23 +78,8 @@ def speak_text(text, lang_code):
 st.title("Multilingual ILR Language Assessment Tool")
 st.markdown("Detect language, translate, summarize key ideas, and assign an ILR level (1–5).")
 
-input_method = st.radio("Choose Input Type", ["Type Text", "Upload Audio File"])
-user_input = ""
-detected_lang = "en"
-
-if input_method == "Type Text":
-    user_input = st.text_area("Enter text:")
-    if user_input.strip():
-        detected_lang = detect(user_input)
-elif input_method == "Upload Audio File":
-    uploaded_audio = st.file_uploader("Upload a WAV file", type=["wav"])
-    if uploaded_audio:
-        st.audio(uploaded_audio, format="audio/wav")
-        with st.spinner("Transcribing audio..."):
-            user_input = transcribe_audio_file(uploaded_audio)
-        st.success("Transcription:")
-        st.write(user_input)
-        detected_lang = detect(user_input) if user_input.strip() else "en"
+user_input = st.text_area("Enter your text (any language):")
+detected_lang = detect(user_input) if user_input.strip() else "en"
 
 if st.button("Analyze"):
     if user_input.strip():
@@ -162,4 +119,4 @@ if st.button("Analyze"):
 
         speak_text(translated_summary, lang_code=detected_lang.split("-")[0])
     else:
-        st.warning("Please input or upload something first.")
+        st.warning("Please enter some text to analyze.")

@@ -1,6 +1,5 @@
 streamlit
 textblob
 nltk
-gtts
 langdetect
 deep-translator

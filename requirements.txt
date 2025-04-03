@@ -1,7 +1,7 @@
 streamlit
-transformers==4.36.2
-pydub
+transformers
 textblob
 nltk
+pydub
 gtts
 langdetect

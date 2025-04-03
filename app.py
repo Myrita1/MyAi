@@ -1,8 +1,9 @@
 import streamlit as st
-st.set_page_config(page_title="ILR Multilingual Language Assessment", layout="centered")
-
 import torch
 import numpy as np
+import os
+import tempfile
+
 from pydub import AudioSegment
 from transformers import (
     pipeline,
@@ -16,9 +17,8 @@ import nltk
 from nltk.tokenize.punkt import PunktSentenceTokenizer, PunktParameters
 from langdetect import detect
 from gtts import gTTS
-import os
-import tempfile
 
+# Setup
 nltk_data_dir = os.path.expanduser(os.path.join("~", "nltk_data"))
 os.makedirs(nltk_data_dir, exist_ok=True)
 nltk.download("punkt", download_dir=nltk_data_dir)
@@ -26,6 +26,7 @@ nltk.data.path.append(nltk_data_dir)
 download_corpora.download_all()
 
 classifier = pipeline("text-classification", model="nlptown/bert-base-multilingual-uncased-sentiment")
+summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 
 @st.cache_resource
 def load_wav2vec_model():
@@ -54,57 +55,28 @@ def translate(text, src_lang, tgt_lang="en"):
         except:
             return text
 
-def back_translate(text, tgt_lang, src_lang="en"):
-    return translate(text, src_lang=src_lang, tgt_lang=tgt_lang)
+def summarize_text(text):
+    trimmed = " ".join(text.split()[:800])
+    result = summarizer(trimmed, max_length=130, min_length=30, do_sample=False)
+    return result[0]['summary_text']
 
-def generate_ilr_numeric_levels(text_blob, sentences, sentiment_label):
-    if len(sentences) < 2:
-        functionality_score = 1
-    elif len(sentences) < 5:
-        functionality_score = 2
-    elif any(len(s.split()) > 12 for s in sentences):
-        functionality_score = 3
-    else:
-        functionality_score = 4 if len(sentences) >= 5 else 2
-
-    word_count = len(text_blob.words)
+def generate_ilr_level(text_blob, sentences, sentiment_label):
+    wc = len(text_blob.words)
+    sentence_count = len(sentences)
     subjectivity = text_blob.sentiment.subjectivity
-    if word_count < 30:
-        content_score = 1
-    elif word_count < 60:
-        content_score = 2
-    elif subjectivity > 0.3:
-        content_score = 4
-    else:
-        content_score = 3
-
     polarity = text_blob.sentiment.polarity
-    if polarity < -0.3:
-        accuracy_score = 1
-    elif -0.3 <= polarity < -0.1:
-        accuracy_score = 2
-    elif -0.1 <= polarity <= 0.1:
-        accuracy_score = 3
-    elif 0.1 < polarity <= 0.3:
-        accuracy_score = 4
-    else:
-        accuracy_score = 5
 
-    if sentiment_label.lower().startswith("positive"):
-        context_score = 4
-    elif "neutral" in sentiment_label.lower():
-        context_score = 3
-    elif "negative" in sentiment_label.lower():
-        context_score = 2
-    else:
-        context_score = 1
-
-    return {
-        "Functionality": functionality_score,
-        "Content": content_score,
-        "Accuracy": accuracy_score,
-        "Context Appropriateness": context_score
-    }
+    level = 1
+    if wc > 150 and sentence_count > 5:
+        if subjectivity < 0.5 and abs(polarity) < 0.4:
+            level = 3
+        if wc > 250:
+            level = 4
+        if wc > 300 and polarity > 0.2 and subjectivity < 0.3:
+            level = 5
+    elif wc > 80:
+        level = 2
+    return min(level, 5)
 
 def transcribe_audio_file(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
@@ -125,9 +97,9 @@ def speak_text(text, lang_code):
     tts.save("feedback.mp3")
     os.system("start feedback.mp3" if os.name == "nt" else "afplay feedback.mp3")
 
-# --- Streamlit Interface ---
+# Streamlit Interface
 st.title("Multilingual ILR Language Assessment Tool")
-st.markdown("Get an ILR proficiency level (1–5) and a clear explanation of why.")
+st.markdown("Detect language, translate, summarize key ideas, and assign an ILR level (1–5).")
 
 input_method = st.radio("Choose Input Type", ["Type Text", "Upload Audio File"])
 user_input = ""
@@ -152,36 +124,35 @@ if st.button("Analyze"):
         st.markdown(f"**Detected Language:** `{detected_lang}`")
 
         with st.spinner("Translating and analyzing..."):
-            translated_text = translate(user_input, src_lang=detected_lang, tgt_lang="en")
-            st.markdown("**Translated to English:**")
-            st.write(translated_text)
+            if detected_lang != "en":
+                translated_text = translate(user_input, src_lang=detected_lang, tgt_lang="en")
+                st.markdown("**Translated to English:**")
+                st.write(translated_text)
+            else:
+                translated_text = user_input
+                st.info("Input is in English — skipping translation.")
+
+            summary = summarize_text(translated_text)
+            st.markdown("**Summary of Key Ideas:**")
+            st.write(summary)
 
             blob = TextBlob(translated_text)
             punkt_param = PunktParameters()
-            sentence_tokenizer = PunktSentenceTokenizer(punkt_param)
-            sentences = sentence_tokenizer.tokenize(translated_text)
+            tokenizer = PunktSentenceTokenizer(punkt_param)
+            sentences = tokenizer.tokenize(translated_text)
             trimmed_text = " ".join(translated_text.split()[:500])
             sentiment = classifier(trimmed_text)[0]
-            ilr_scores = generate_ilr_numeric_levels(blob, sentences, sentiment["label"])
+            ilr_level = generate_ilr_level(blob, sentences, sentiment["label"])
 
         st.subheader("ILR Assessment Result (Overall Level):")
-        overall_score = round(sum(ilr_scores.values()) / len(ilr_scores))
-
-        if overall_score == 1:
-            rationale = "Very basic sentence structure and vocabulary. Likely limited to survival phrases."
-        elif overall_score == 2:
-            rationale = "Simple language and limited elaboration. Suitable for basic social or transactional exchanges."
-        elif overall_score == 3:
-            rationale = "Routine communication skills with moderate vocabulary and basic coherence."
-        elif overall_score == 4:
-            rationale = "Extended discourse evident. Ability to narrate and describe with fair grammatical control."
-        else:
-            rationale = "Advanced fluency, control, and appropriateness. Rich vocabulary and abstract expression possible."
-
-        st.markdown(f"- **Estimated ILR Level:** {overall_score}")
+        st.markdown(f"- **Estimated ILR Level:** {ilr_level}")
+        rationale = f"The content exhibits characteristics of ILR Level {ilr_level} based on word count, structural range, and coherence."
         st.markdown("**Rationale:** " + rationale)
 
-        translated_summary = back_translate(f"Estimated ILR Level is {overall_score}. " + rationale, tgt_lang=detected_lang)
+        translated_summary = back_translate(
+            f"Estimated ILR Level is {ilr_level}. Summary: {summary}. Rationale: {rationale}",
+            tgt_lang=detected_lang
+        )
         st.markdown("**Feedback (translated):**")
         st.write(translated_summary)
 

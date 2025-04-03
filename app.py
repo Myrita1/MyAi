@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import os
 import tempfile
+import torch
 
 from pydub import AudioSegment
 from transformers import (
@@ -9,7 +10,9 @@ from transformers import (
     MarianMTModel,
     MarianTokenizer,
     Wav2Vec2ForCTC,
-    Wav2Vec2Tokenizer
+    Wav2Vec2Tokenizer,
+    AutoTokenizer,
+    AutoModelForSequenceClassification
 )
 from textblob import TextBlob, download_corpora
 import nltk
@@ -24,10 +27,9 @@ nltk.download("punkt", download_dir=nltk_data_dir)
 nltk.data.path.append(nltk_data_dir)
 download_corpora.download_all()
 
-classifier = pipeline(
-    "sentiment-analysis",
-    model="distilbert-base-uncased-finetuned-sst-2-english"
-)
+# Load models manually to avoid pipeline inference error
+tokenizer_sentiment = AutoTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
+model_sentiment = AutoModelForSequenceClassification.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
 
 summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
@@ -43,6 +45,13 @@ LANG_CODE_MAP = {
     "en": "en", "fr": "fr", "es": "es", "ar": "ar", "zh-cn": "zh", "ru": "ru",
     "pt": "pt", "de": "de", "ja": "ja", "ko": "ko", "it": "it"
 }
+
+def get_sentiment_label(text):
+    inputs = tokenizer_sentiment(text, return_tensors="pt", truncation=True, padding=True)
+    with torch.no_grad():
+        logits = model_sentiment(**inputs).logits
+    predicted_class_id = logits.argmax().item()
+    return "Positive" if predicted_class_id == 1 else "Negative"
 
 def translate(text, src_lang, tgt_lang="en"):
     try:
@@ -143,8 +152,8 @@ if st.button("Analyze"):
             tokenizer = PunktSentenceTokenizer(punkt_param)
             sentences = tokenizer.tokenize(translated_text)
             trimmed_text = " ".join(translated_text.split()[:500])
-            sentiment = classifier(trimmed_text)[0]
-            ilr_level = generate_ilr_level(blob, sentences, sentiment["label"])
+            sentiment_label = get_sentiment_label(trimmed_text)
+            ilr_level = generate_ilr_level(blob, sentences, sentiment_label)
 
         st.subheader("ILR Assessment Result (Overall Level):")
         st.markdown(f"- **Estimated ILR Level:** {ilr_level}")

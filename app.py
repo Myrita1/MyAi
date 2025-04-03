@@ -17,8 +17,8 @@ from nltk.tokenize.punkt import PunktSentenceTokenizer, PunktParameters
 from langdetect import detect
 from gtts import gTTS
 import os
+import tempfile
 
-# Setup
 nltk_data_dir = os.path.expanduser(os.path.join("~", "nltk_data"))
 os.makedirs(nltk_data_dir, exist_ok=True)
 nltk.download("punkt", download_dir=nltk_data_dir)
@@ -107,7 +107,10 @@ def generate_ilr_numeric_levels(text_blob, sentences, sentiment_label):
     }
 
 def transcribe_audio_file(uploaded_file):
-    audio = AudioSegment.from_file(uploaded_file)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+        tmp_file.write(uploaded_file.read())
+        tmp_path = tmp_file.name
+    audio = AudioSegment.from_file(tmp_path, format="wav")
     audio = audio.set_channels(1).set_frame_rate(16000)
     samples = np.array(audio.get_array_of_samples()).astype(np.float32) / 32768.0
     input_values = tokenizer_wav2vec(samples, return_tensors='pt', padding='longest').input_values
@@ -123,8 +126,8 @@ def speak_text(text, lang_code):
     os.system("start feedback.mp3" if os.name == "nt" else "afplay feedback.mp3")
 
 # --- Streamlit Interface ---
-st.title("🌍 Multilingual ILR Language Assessment Tool (Numeric ILR Levels)")
-st.markdown("Assess your speech or text using ILR level scores (1–5) across four key language domains.")
+st.title("Multilingual ILR Language Assessment Tool")
+st.markdown("Get an ILR proficiency level (1–5) and a clear explanation of why.")
 
 input_method = st.radio("Choose Input Type", ["Type Text", "Upload Audio File"])
 user_input = ""
@@ -144,7 +147,7 @@ elif input_method == "Upload Audio File":
         st.write(user_input)
         detected_lang = detect(user_input) if user_input.strip() else "en"
 
-if st.button("🚀 Analyze"):
+if st.button("Analyze"):
     if user_input.strip():
         st.markdown(f"**Detected Language:** `{detected_lang}`")
 
@@ -160,13 +163,24 @@ if st.button("🚀 Analyze"):
             sentiment = classifier(translated_text)[0]
             ilr_scores = generate_ilr_numeric_levels(blob, sentences, sentiment["label"])
 
-        st.subheader("🧠 ILR Assessment Results (Numeric Levels):")
-        for domain, score in ilr_scores.items():
-            st.markdown(f"- **{domain}**: Level **{score}**")
+        st.subheader("ILR Assessment Result (Overall Level):")
+        overall_score = round(sum(ilr_scores.values()) / len(ilr_scores))
 
-        summary = ", ".join([f"{k} is Level {v}" for k, v in ilr_scores.items()])
-        translated_summary = back_translate(summary, tgt_lang=detected_lang)
+        if overall_score == 1:
+            rationale = "Very basic sentence structure and vocabulary. Likely limited to survival phrases."
+        elif overall_score == 2:
+            rationale = "Simple language and limited elaboration. Suitable for basic social or transactional exchanges."
+        elif overall_score == 3:
+            rationale = "Routine communication skills with moderate vocabulary and basic coherence."
+        elif overall_score == 4:
+            rationale = "Extended discourse evident. Ability to narrate and describe with fair grammatical control."
+        else:
+            rationale = "Advanced fluency, control, and appropriateness. Rich vocabulary and abstract expression possible."
 
+        st.markdown(f"- **Estimated ILR Level:** {overall_score}")
+        st.markdown("**Rationale:** " + rationale)
+
+        translated_summary = back_translate(f"Estimated ILR Level is {overall_score}. " + rationale, tgt_lang=detected_lang)
         st.markdown("**Feedback (translated):**")
         st.write(translated_summary)
 

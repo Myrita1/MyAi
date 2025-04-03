@@ -1,15 +1,7 @@
-# Step 2: Write the updated requirements.txt
-requirements_txt = """
 streamlit
-transformers
-torch
+transformers==4.36.2
 pydub
 textblob
 nltk
 gtts
 langdetect
-scipy
-"""
-
-with open("/mnt/data/ILR_App/requirements.txt", "w") as f:
-    f.write(requirements_txt.strip())

@@ -1,5 +1,4 @@
 import streamlit as st
-import torch
 import numpy as np
 import os
 import tempfile
@@ -86,9 +85,8 @@ def transcribe_audio_file(uploaded_file):
     audio = audio.set_channels(1).set_frame_rate(16000)
     samples = np.array(audio.get_array_of_samples()).astype(np.float32) / 32768.0
     input_values = tokenizer_wav2vec(samples, return_tensors='pt', padding='longest').input_values
-    with torch.no_grad():
-        logits = model_wav2vec(input_values).logits
-    predicted_ids = torch.argmax(logits, dim=-1)
+    logits = model_wav2vec(input_values).logits
+    predicted_ids = np.argmax(logits, axis=-1)
     return tokenizer_wav2vec.batch_decode(predicted_ids)[0]
 
 def speak_text(text, lang_code):

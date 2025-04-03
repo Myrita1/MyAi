@@ -24,7 +24,11 @@ nltk.download("punkt", download_dir=nltk_data_dir)
 nltk.data.path.append(nltk_data_dir)
 download_corpora.download_all()
 
-classifier = pipeline("text-classification", model="nlptown/bert-base-multilingual-uncased-sentiment")
+classifier = pipeline(
+    "text-classification",
+    model="nlptown/bert-base-multilingual-uncased-sentiment",
+    framework="pt"
+)
 summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
 @st.cache_resource

@@ -8,8 +8,7 @@ from transformers import (
     MarianMTModel,
     MarianTokenizer,
     Wav2Vec2ForCTC,
-    Wav2Vec2Tokenizer,
-    pipeline
+    Wav2Vec2Tokenizer
 )
 from textblob import TextBlob, download_corpora
 import nltk
@@ -23,8 +22,6 @@ os.makedirs(nltk_data_dir, exist_ok=True)
 nltk.download("punkt", download_dir=nltk_data_dir)
 nltk.data.path.append(nltk_data_dir)
 download_corpora.download_all()
-
-summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
 @st.cache_resource
 def load_wav2vec_model():
@@ -63,9 +60,11 @@ def translate(text, src_lang, tgt_lang="en"):
             return text
 
 def summarize_text(text):
-    trimmed = " ".join(text.split()[:800])
-    result = summarizer(trimmed, max_length=130, min_length=30, do_sample=False)
-    return result[0]['summary_text']
+    blob = TextBlob(text)
+    sentences = blob.sentences
+    if not sentences:
+        return "No summary available."
+    return " ".join(str(s) for s in sentences[:2])
 
 def generate_ilr_level(text_blob, sentences, sentiment_label):
     wc = len(text_blob.words)

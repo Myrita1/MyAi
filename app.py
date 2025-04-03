@@ -6,6 +6,7 @@ import nltk
 from nltk.tokenize.punkt import PunktSentenceTokenizer, PunktParameters
 from langdetect import detect
 from gtts import gTTS
+from deep_translator import GoogleTranslator
 
 # Setup
 nltk_data_dir = os.path.expanduser(os.path.join("~", "nltk_data"))
@@ -33,7 +34,7 @@ def get_sentiment_label(blob):
 
 def translate(text, src_lang, tgt_lang="en"):
     try:
-        return str(TextBlob(text).translate(from_lang=src_lang, to=tgt_lang))
+        return GoogleTranslator(source=src_lang, target=tgt_lang).translate(text)
     except Exception as e:
         st.warning(f"Translation failed. Using original input. ({e})")
         return text

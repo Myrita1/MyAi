@@ -1,5 +1,4 @@
 import streamlit as st
-import numpy as np
 import os
 from textblob import TextBlob, download_corpora
 import nltk
@@ -14,15 +13,16 @@ nltk.download("punkt", download_dir=nltk_data_dir)
 nltk.data.path.append(nltk_data_dir)
 download_corpora.download_all()
 
+# Fix misdetected or unsupported language codes
 def fix_lang_code(code):
     substitutions = {
         "zh-cn": "chinese (simplified)",
         "zh": "chinese (simplified)",
         "zh-tw": "chinese (traditional)",
         "he": "iw",  # Hebrew
-        "jw": "jv",  # Javanese
-        "fil": "tl", # Filipino
-        "nb": "no",  # Norwegian Bokmål
+        "jw": "jv",
+        "fil": "tl",
+        "nb": "no",
         "ar": "arabic",
         "en": "english"
     }
@@ -30,7 +30,9 @@ def fix_lang_code(code):
 
 def translate(text, src_lang, tgt_lang="en"):
     try:
-        return GoogleTranslator(source=fix_lang_code(src_lang), target=fix_lang_code(tgt_lang)).translate(text)
+        fixed_src = fix_lang_code(src_lang)
+        fixed_tgt = fix_lang_code(tgt_lang)
+        return GoogleTranslator(source=fixed_src, target=fixed_tgt).translate(text)
     except Exception as e:
         st.warning(f"Translation failed. Using original input. ({e})")
         return text
@@ -40,69 +42,66 @@ def summarize_text(text):
     sentences = blob.sentences
     return " ".join(str(s) for s in sentences[:2]) if sentences else "No summary available."
 
-def generate_ilr_level(blob, sentences):
-    wc = len(blob.words)
-    sc = len(sentences)
-    subj = blob.sentiment.subjectivity
-    polar = blob.sentiment.polarity
+def get_ilr_level(wc, sc, vocab):
+    if wc < 50 or sc < 2:
+        return 1
+    elif wc < 150 or vocab < 100:
+        return 2
+    elif wc < 300 or vocab < 150:
+        return 3
+    elif wc < 500 or vocab < 250:
+        return 4
+    else:
+        return 5
 
-    level = 1
-    if wc > 150 and sc > 5:
-        level = 3
-        if wc > 250:
-            level = 4
-        if wc > 300 and polar > 0.2 and subj < 0.3:
-            level = 5
-    elif wc > 80:
-        level = 2
-    return level
+def get_ilr_rationale(level):
+    rationales = {
+        1: "Text displays simple structure, short sentences, and limited vocabulary. Likely understood by someone who can read signs, forms, and common labels.",
+        2: "Text includes connected ideas with moderate vocabulary. Suitable for readers who can understand routine news, descriptions, and messages.",
+        3: "Text demonstrates good organization, paragraph development, and range of vocabulary. Suitable for readers who handle general professional reading.",
+        4: "Text shows advanced structure, with abstract or technical language. Suitable for readers in academic or formal workplace contexts.",
+        5: "Text reflects near-native reading ability — stylistic nuance, idiomatic precision, and full cultural fluency across genres."
+    }
+    return rationales.get(level, "No rationale available.")
 
-def get_rationale(level, blob, sentences):
-    wc = len(blob.words)
-    sc = len(sentences)
-    vocab = len(set(blob.words))
-    subj = blob.sentiment.subjectivity
-    polar = blob.sentiment.polarity
-
-    return (
-        f"The ILR Level {level} was assigned based on the following observed features:\n\n"
-        f"- **Word Count**: {wc} words indicate a {'short' if wc < 80 else 'moderate' if wc < 150 else 'extensive'} text.\n"
-        f"- **Sentence Count**: {sc} sentence(s) suggesting {'limited' if sc <= 2 else 'developed'} structural complexity.\n"
-        f"- **Vocabulary Variety**: {vocab} unique words reflect a {'basic' if vocab < 50 else 'moderate' if vocab < 120 else 'rich'} lexicon.\n"
-        f"- **Subjectivity/Polarity**: ({subj:.2f}/{polar:.2f}) suggesting the tone is {'neutral' if -0.2 <= polar <= 0.2 else 'opinionated'} "
-        f"and the focus is {'informational' if subj < 0.4 else 'personal'}.\n"
-        f"- **Overall**: The text demonstrates features aligning with ILR Level {level} expectations for reading proficiency."
-    )
-
-# --- Streamlit Interface ---
+# --- Streamlit UI ---
 st.title("Multilingual ILR Language Assessment Tool (Reading Only)")
-st.markdown("Detect language, translate, summarize key ideas, and assign an ILR reading level (1–5).")
+st.markdown("Detect language, translate to English, summarize key ideas, and assign an ILR Reading Level (1–5).")
 
 user_input = st.text_area("Enter your text (any language):")
-detected_lang = detect(user_input) if user_input.strip() else "en"
 
 if st.button("Analyze"):
     if user_input.strip():
+        detected_lang = detect(user_input)
+
+        # Fix Arabic falsely detected as Hebrew
+        if detected_lang == "he" and "ال" in user_input:
+            detected_lang = "ar"
+
         st.markdown(f"**Detected Language:** `{detected_lang}`")
 
-        with st.spinner("Processing..."):
+        with st.spinner("Translating and analyzing..."):
             translated_text = translate(user_input, src_lang=detected_lang, tgt_lang="en")
             st.markdown("**Translated to English:**")
             st.write(translated_text)
-
-            summary = summarize_text(translated_text)
-            st.markdown("**Summary of Key Ideas:**")
-            st.write(summary)
 
             blob = TextBlob(translated_text)
             punkt_param = PunktParameters()
             tokenizer = PunktSentenceTokenizer(punkt_param)
             sentences = tokenizer.tokenize(translated_text)
-            ilr_level = generate_ilr_level(blob, sentences)
+
+            summary = summarize_text(translated_text)
+            wc = len(blob.words)
+            vocab = len(set(blob.words))
+            sc = len(sentences)
+            ilr_level = get_ilr_level(wc, sc, vocab)
+
+            st.markdown("**Summary of Key Ideas:**")
+            st.write(summary)
 
         st.subheader("ILR Assessment Result (Reading Proficiency):")
         st.markdown(f"- **Estimated ILR Level:** {ilr_level}")
-        st.markdown("**Detailed Justification:**")
-        st.markdown(get_rationale(ilr_level, blob, sentences))
+        st.markdown("**Detailed Justification (based on ILR Reading Guidelines):**")
+        st.markdown(get_ilr_rationale(ilr_level))
     else:
         st.warning("Please input text to analyze.")

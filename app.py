@@ -26,7 +26,7 @@ nltk.data.path.append(nltk_data_dir)
 download_corpora.download_all()
 
 classifier = pipeline("text-classification", model="nlptown/bert-base-multilingual-uncased-sentiment")
-summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
 @st.cache_resource
 def load_wav2vec_model():
@@ -149,9 +149,9 @@ if st.button("Analyze"):
         rationale = f"The content exhibits characteristics of ILR Level {ilr_level} based on word count, structural range, and coherence."
         st.markdown("**Rationale:** " + rationale)
 
-        translated_summary = back_translate(
+        translated_summary = translate(
             f"Estimated ILR Level is {ilr_level}. Summary: {summary}. Rationale: {rationale}",
-            tgt_lang=detected_lang
+            src_lang="en", tgt_lang=detected_lang
         )
         st.markdown("**Feedback (translated):**")
         st.write(translated_summary)

@@ -16,12 +16,28 @@ nltk.data.path.append(nltk_data_dir)
 download_corpora.download_all()
 
 LANG_CODE_MAP = {
-    "en": "en", "fr": "fr", "es": "es", "ar": "ar", "zh-cn": "zh", "ru": "ru",
+    "en": "en", "fr": "fr", "es": "es", "ar": "ar", "zh-cn": "zh-CN", "ru": "ru",
     "pt": "pt", "de": "de", "ja": "ja", "ko": "ko", "it": "it", "tr": "tr",
     "nl": "nl", "sv": "sv", "no": "no", "pl": "pl", "ro": "ro", "uk": "uk",
     "el": "el", "cs": "cs", "da": "da", "hu": "hu", "hi": "hi", "bn": "bn",
     "fa": "fa", "ur": "ur", "id": "id", "ms": "ms", "th": "th", "vi": "vi"
 }
+
+def fix_lang_code(code):
+    """Corrects common mismatches between langdetect and GoogleTranslator."""
+    substitutions = {
+        "zh-cn": "chinese (simplified)",
+        "zh": "chinese (simplified)",
+        "zh-tw": "chinese (traditional)",
+        "he": "iw",   # Hebrew
+        "jw": "jv",   # Javanese
+        "fil": "tl",  # Filipino
+        "nb": "no",   # Norwegian Bokmål
+        "sv": "swedish",
+        "ar": "arabic",
+        "en": "english"
+    }
+    return substitutions.get(code, code)
 
 def get_sentiment_label(blob):
     polarity = blob.sentiment.polarity
@@ -34,7 +50,9 @@ def get_sentiment_label(blob):
 
 def translate(text, src_lang, tgt_lang="en"):
     try:
-        return GoogleTranslator(source=src_lang, target=tgt_lang).translate(text)
+        fixed_src = fix_lang_code(src_lang)
+        fixed_tgt = fix_lang_code(tgt_lang)
+        return GoogleTranslator(source=fixed_src, target=fixed_tgt).translate(text)
     except Exception as e:
         st.warning(f"Translation failed. Using original input. ({e})")
         return text
@@ -70,7 +88,7 @@ def speak_text(text, lang_code):
     tts.save("feedback.mp3")
     os.system("start feedback.mp3" if os.name == "nt" else "afplay feedback.mp3")
 
-# Streamlit UI
+# --- Streamlit UI ---
 st.title("Multilingual ILR Language Assessment Tool")
 st.markdown("Detect language, translate, summarize key ideas, and assign an ILR level (1–5).")
 

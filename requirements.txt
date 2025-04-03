@@ -3,4 +3,3 @@ textblob
 nltk
 gtts
 langdetect
-transformers

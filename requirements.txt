@@ -1,7 +1,7 @@
 streamlit
-transformers
 textblob
 nltk
-pydub
 gtts
+pydub
 langdetect
+transformers

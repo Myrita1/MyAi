@@ -18,14 +18,13 @@ from langdetect import detect
 from gtts import gTTS
 import os
 
-# Setup NLTK + TextBlob
+# Setup
 nltk_data_dir = os.path.expanduser(os.path.join("~", "nltk_data"))
 os.makedirs(nltk_data_dir, exist_ok=True)
 nltk.download("punkt", download_dir=nltk_data_dir)
 nltk.data.path.append(nltk_data_dir)
 download_corpora.download_all()
 
-# Load sentiment classifier
 classifier = pipeline("text-classification", model="nlptown/bert-base-multilingual-uncased-sentiment")
 
 @st.cache_resource
@@ -36,83 +35,75 @@ def load_wav2vec_model():
 
 tokenizer_wav2vec, model_wav2vec = load_wav2vec_model()
 
-# Language code mapping for TTS compatibility
 LANG_CODE_MAP = {
     "en": "en", "fr": "fr", "es": "es", "ar": "ar", "zh-cn": "zh", "ru": "ru",
     "pt": "pt", "de": "de", "ja": "ja", "ko": "ko", "it": "it"
 }
 
-# ILR Descriptors
-ILR_LEVELS = {
-    "Functionality": {
-        "Emerging": "Performs basic language tasks like greetings and introducing oneself. Can understand simple questions and statements.",
-        "Functional": "Handles routine tasks requiring a simple and direct exchange of information on familiar topics. Can describe in simple terms aspects of their background, immediate environment, and basic needs."
-    },
-    "Content": {
-        "Basic": "Uses limited vocabulary and common expressions. Stays within concrete topics.",
-        "Moderate": "Discusses topics beyond immediate needs. Shows some ability to connect ideas and express opinions.",
-        "Advanced": "Communicates with a wide range of vocabulary. Handles unfamiliar topics with some fluency."
-    },
-    "Accuracy": {
-        "Developing": "Frequent grammatical errors. Meaning is often unclear.",
-        "Neutral Accuracy": "Occasional errors. Meaning is generally clear.",
-        "Polished": "Grammar and usage are mostly accurate with minor, non-impeding errors.",
-        "Imprecise": "Errors sometimes interfere with communication."
-    },
-    "Context Appropriateness": {
-        "Appropriate": "Language is well-suited to the context and audience. Registers and styles are used correctly.",
-        "Inappropriate": "Language may be too formal, too informal, or contextually inaccurate. Misuse of expressions common."
-    }
-}
-
-def generate_detailed_feedback(results):
-    return "\n".join([
-        f"- **{cat} ({lvl}):** {ILR_LEVELS.get(cat, {}).get(lvl, 'No descriptor available.')}"
-        for cat, lvl in results.items()
-    ])
-
 def translate(text, src_lang, tgt_lang="en"):
-    model_name = f"Helsinki-NLP/opus-mt-{src_lang}-{tgt_lang}"
-    tokenizer = MarianTokenizer.from_pretrained(model_name)
-    model = MarianMTModel.from_pretrained(model_name)
-    tokens = tokenizer(text, return_tensors="pt", padding=True)
-    translated = model.generate(**tokens)
-    return tokenizer.decode(translated[0], skip_special_tokens=True)
+    try:
+        model_name = f"Helsinki-NLP/opus-mt-{src_lang}-{tgt_lang}"
+        tokenizer = MarianTokenizer.from_pretrained(model_name)
+        model = MarianMTModel.from_pretrained(model_name)
+        tokens = tokenizer(text, return_tensors="pt", padding=True)
+        translated = model.generate(**tokens)
+        return tokenizer.decode(translated[0], skip_special_tokens=True)
+    except:
+        try:
+            return str(TextBlob(text).translate(from_lang=src_lang, to=tgt_lang))
+        except:
+            return text
 
 def back_translate(text, tgt_lang, src_lang="en"):
     return translate(text, src_lang=src_lang, tgt_lang=tgt_lang)
 
-def assess_ilr_abilities(text):
-    punkt_param = PunktParameters()
-    tokenizer = PunktSentenceTokenizer(punkt_param)
-    sentences = tokenizer.tokenize(text)
-    blob = TextBlob(text)
-
-    function_score = sum(1 for s in sentences if len(s.split()) > 10)
-    function_level = "Emerging" if function_score < 2 else "Functional"
-
-    word_count = len(blob.words)
-    content_level = "Basic"
-    if word_count > 60:
-        content_level = "Moderate" if blob.sentiment.subjectivity > 0.4 else "Advanced"
-
-    polarity = blob.sentiment.polarity
-    accuracy_level = "Developing"
-    if -0.2 < polarity < 0.2:
-        accuracy_level = "Neutral Accuracy"
-    elif polarity >= 0.2:
-        accuracy_level = "Polished"
+def generate_ilr_numeric_levels(text_blob, sentences, sentiment_label):
+    if len(sentences) < 2:
+        functionality_score = 1
+    elif len(sentences) < 5:
+        functionality_score = 2
+    elif any(len(s.split()) > 12 for s in sentences):
+        functionality_score = 3
     else:
-        accuracy_level = "Imprecise"
+        functionality_score = 4 if len(sentences) >= 5 else 2
 
-    sentiment = classifier(text)[0]
-    context_level = "Appropriate" if sentiment['label'].lower().startswith("positive") else "Inappropriate"
+    word_count = len(text_blob.words)
+    subjectivity = text_blob.sentiment.subjectivity
+    if word_count < 30:
+        content_score = 1
+    elif word_count < 60:
+        content_score = 2
+    elif subjectivity > 0.3:
+        content_score = 4
+    else:
+        content_score = 3
+
+    polarity = text_blob.sentiment.polarity
+    if polarity < -0.3:
+        accuracy_score = 1
+    elif -0.3 <= polarity < -0.1:
+        accuracy_score = 2
+    elif -0.1 <= polarity <= 0.1:
+        accuracy_score = 3
+    elif 0.1 < polarity <= 0.3:
+        accuracy_score = 4
+    else:
+        accuracy_score = 5
+
+    if sentiment_label.lower().startswith("positive"):
+        context_score = 4
+    elif "neutral" in sentiment_label.lower():
+        context_score = 3
+    elif "negative" in sentiment_label.lower():
+        context_score = 2
+    else:
+        context_score = 1
 
     return {
-        "Functionality": function_level,
-        "Content": content_level,
-        "Accuracy": accuracy_level,
-        "Context Appropriateness": context_level
+        "Functionality": functionality_score,
+        "Content": content_score,
+        "Accuracy": accuracy_score,
+        "Context Appropriateness": context_score
     }
 
 def transcribe_audio_file(uploaded_file):
@@ -132,8 +123,8 @@ def speak_text(text, lang_code):
     os.system("start feedback.mp3" if os.name == "nt" else "afplay feedback.mp3")
 
 # --- Streamlit Interface ---
-st.title("🌍 Multilingual ILR Language Assessment Tool")
-st.markdown("Evaluate your text or speech based on ILR levels across 30+ languages.")
+st.title("🌍 Multilingual ILR Language Assessment Tool (Numeric ILR Levels)")
+st.markdown("Assess your speech or text using ILR level scores (1–5) across four key language domains.")
 
 input_method = st.radio("Choose Input Type", ["Type Text", "Upload Audio File"])
 user_input = ""
@@ -143,9 +134,6 @@ if input_method == "Type Text":
     user_input = st.text_area("Enter text:")
     if user_input.strip():
         detected_lang = detect(user_input)
-    else:
-        st.warning("No input detected. Defaulting to English.")
-
 elif input_method == "Upload Audio File":
     uploaded_audio = st.file_uploader("Upload a WAV file", type=["wav"])
     if uploaded_audio:
@@ -161,28 +149,27 @@ if st.button("🚀 Analyze"):
         st.markdown(f"**Detected Language:** `{detected_lang}`")
 
         with st.spinner("Translating and analyzing..."):
-            try:
-                translated_text = translate(user_input, src_lang=detected_lang, tgt_lang="en")
-                st.markdown("**Translated to English:**")
-                st.write(translated_text)
-            except Exception as e:
-                translated_text = user_input
-                st.warning(f"Translation failed: {e}")
+            translated_text = translate(user_input, src_lang=detected_lang, tgt_lang="en")
+            st.markdown("**Translated to English:**")
+            st.write(translated_text)
 
-            results = assess_ilr_abilities(translated_text)
-            st.subheader("ILR Assessment Results:")
-            st.markdown("### Detailed ILR Feedback:")
-            st.markdown(generate_detailed_feedback(results))
+            blob = TextBlob(translated_text)
+            punkt_param = PunktParameters()
+            sentence_tokenizer = PunktSentenceTokenizer(punkt_param)
+            sentences = sentence_tokenizer.tokenize(translated_text)
+            sentiment = classifier(translated_text)[0]
+            ilr_scores = generate_ilr_numeric_levels(blob, sentences, sentiment["label"])
 
-            summary = ", ".join([f"{k} is {v}" for k, v in results.items()])
-            try:
-                translated_summary = back_translate(summary, tgt_lang=detected_lang)
-            except:
-                translated_summary = summary
+        st.subheader("🧠 ILR Assessment Results (Numeric Levels):")
+        for domain, score in ilr_scores.items():
+            st.markdown(f"- **{domain}**: Level **{score}**")
 
-            st.markdown("**Feedback (translated):**")
-            st.write(translated_summary)
+        summary = ", ".join([f"{k} is Level {v}" for k, v in ilr_scores.items()])
+        translated_summary = back_translate(summary, tgt_lang=detected_lang)
 
-            speak_text(translated_summary, lang_code=detected_lang.split("-")[0])
+        st.markdown("**Feedback (translated):**")
+        st.write(translated_summary)
+
+        speak_text(translated_summary, lang_code=detected_lang.split("-")[0])
     else:
         st.warning("Please input or upload something first.")

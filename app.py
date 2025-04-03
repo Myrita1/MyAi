@@ -5,11 +5,11 @@ import tempfile
 
 from pydub import AudioSegment
 from transformers import (
-    pipeline,
     MarianMTModel,
     MarianTokenizer,
     Wav2Vec2ForCTC,
-    Wav2Vec2Tokenizer
+    Wav2Vec2Tokenizer,
+    pipeline
 )
 from textblob import TextBlob, download_corpora
 import nltk
@@ -23,12 +23,6 @@ os.makedirs(nltk_data_dir, exist_ok=True)
 nltk.download("punkt", download_dir=nltk_data_dir)
 nltk.data.path.append(nltk_data_dir)
 download_corpora.download_all()
-
-# Compatible sentiment pipeline (no torch)
-sentiment_pipeline = pipeline(
-    "sentiment-analysis",
-    model="cardiffnlp/twitter-roberta-base-sentiment-latest"
-)
 
 summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
@@ -44,6 +38,15 @@ LANG_CODE_MAP = {
     "en": "en", "fr": "fr", "es": "es", "ar": "ar", "zh-cn": "zh", "ru": "ru",
     "pt": "pt", "de": "de", "ja": "ja", "ko": "ko", "it": "it"
 }
+
+def get_sentiment_label(blob):
+    polarity = blob.sentiment.polarity
+    if polarity > 0.2:
+        return "Positive"
+    elif polarity < -0.2:
+        return "Negative"
+    else:
+        return "Neutral"
 
 def translate(text, src_lang, tgt_lang="en"):
     try:
@@ -63,13 +66,6 @@ def summarize_text(text):
     trimmed = " ".join(text.split()[:800])
     result = summarizer(trimmed, max_length=130, min_length=30, do_sample=False)
     return result[0]['summary_text']
-
-def get_sentiment_label(text):
-    try:
-        result = sentiment_pipeline(text)[0]
-        return result["label"]
-    except:
-        return "neutral"
 
 def generate_ilr_level(text_blob, sentences, sentiment_label):
     wc = len(text_blob.words)
@@ -150,7 +146,7 @@ if st.button("Analyze"):
             punkt_param = PunktParameters()
             tokenizer = PunktSentenceTokenizer(punkt_param)
             sentences = tokenizer.tokenize(translated_text)
-            sentiment_label = get_sentiment_label(translated_text)
+            sentiment_label = get_sentiment_label(blob)
             ilr_level = generate_ilr_level(blob, sentences, sentiment_label)
 
         st.subheader("ILR Assessment Result (Overall Level):")

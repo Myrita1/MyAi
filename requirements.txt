@@ -1,3 +1,5 @@
+# Step 2: Write the updated requirements.txt
+requirements_txt = """
 streamlit
 transformers
 torch
@@ -7,4 +9,7 @@ nltk
 gtts
 langdetect
 scipy
+"""
 
+with open("/mnt/data/ILR_App/requirements.txt", "w") as f:
+    f.write(requirements_txt.strip())

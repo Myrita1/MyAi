@@ -160,7 +160,8 @@ if st.button("Analyze"):
             punkt_param = PunktParameters()
             sentence_tokenizer = PunktSentenceTokenizer(punkt_param)
             sentences = sentence_tokenizer.tokenize(translated_text)
-            sentiment = classifier(translated_text)[0]
+            trimmed_text = " ".join(translated_text.split()[:500])
+            sentiment = classifier(trimmed_text)[0]
             ilr_scores = generate_ilr_numeric_levels(blob, sentences, sentiment["label"])
 
         st.subheader("ILR Assessment Result (Overall Level):")

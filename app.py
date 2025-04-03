@@ -6,7 +6,6 @@ import nltk
 from nltk.tokenize.punkt import PunktSentenceTokenizer, PunktParameters
 from langdetect import detect
 from gtts import gTTS
-from transformers import MarianMTModel, MarianTokenizer
 
 # Setup
 nltk_data_dir = os.path.expanduser(os.path.join("~", "nltk_data"))
@@ -17,7 +16,10 @@ download_corpora.download_all()
 
 LANG_CODE_MAP = {
     "en": "en", "fr": "fr", "es": "es", "ar": "ar", "zh-cn": "zh", "ru": "ru",
-    "pt": "pt", "de": "de", "ja": "ja", "ko": "ko", "it": "it"
+    "pt": "pt", "de": "de", "ja": "ja", "ko": "ko", "it": "it", "tr": "tr",
+    "nl": "nl", "sv": "sv", "no": "no", "pl": "pl", "ro": "ro", "uk": "uk",
+    "el": "el", "cs": "cs", "da": "da", "hu": "hu", "hi": "hi", "bn": "bn",
+    "fa": "fa", "ur": "ur", "id": "id", "ms": "ms", "th": "th", "vi": "vi"
 }
 
 def get_sentiment_label(blob):
@@ -31,21 +33,10 @@ def get_sentiment_label(blob):
 
 def translate(text, src_lang, tgt_lang="en"):
     try:
-        # Some environments need fixed model names
-        if src_lang == "ar" and tgt_lang == "en":
-            model_name = "Helsinki-NLP/opus-mt-ar-en"
-        else:
-            model_name = f"Helsinki-NLP/opus-mt-{src_lang}-{tgt_lang}"
-        tokenizer = MarianTokenizer.from_pretrained(model_name)
-        model = MarianMTModel.from_pretrained(model_name)
-        tokens = tokenizer(text, return_tensors="pt", padding=True)
-        translated = model.generate(**tokens)
-        return tokenizer.decode(translated[0], skip_special_tokens=True)
-    except Exception:
-        try:
-            return str(TextBlob(text).translate(from_lang=src_lang, to=tgt_lang))
-        except Exception:
-            return text
+        return str(TextBlob(text).translate(from_lang=src_lang, to=tgt_lang))
+    except Exception as e:
+        st.warning(f"Translation failed. Using original input. ({e})")
+        return text
 
 def summarize_text(text):
     blob = TextBlob(text)
@@ -78,7 +69,7 @@ def speak_text(text, lang_code):
     tts.save("feedback.mp3")
     os.system("start feedback.mp3" if os.name == "nt" else "afplay feedback.mp3")
 
-# Streamlit Interface
+# Streamlit UI
 st.title("Multilingual ILR Language Assessment Tool")
 st.markdown("Detect language, translate, summarize key ideas, and assign an ILR level (1–5).")
 
@@ -90,15 +81,9 @@ if st.button("Analyze"):
         st.markdown(f"**Detected Language:** `{detected_lang}`")
 
         with st.spinner("Translating and analyzing..."):
-            if detected_lang != "en":
-                translated_text = translate(user_input, src_lang=detected_lang, tgt_lang="en")
-                st.markdown("**Translated to English:**")
-                st.write(translated_text)
-                if translated_text.strip() == user_input.strip():
-                    st.warning("Translation failed. Using original input.")
-            else:
-                translated_text = user_input
-                st.info("Input is in English — skipping translation.")
+            translated_text = translate(user_input, src_lang=detected_lang, tgt_lang="en")
+            st.markdown("**Translated to English:**")
+            st.write(translated_text)
 
             summary = summarize_text(translated_text)
             st.markdown("**Summary of Key Ideas:**")
@@ -116,13 +101,12 @@ if st.button("Analyze"):
         rationale = f"The content exhibits characteristics of ILR Level {ilr_level} based on word count, structural range, and coherence."
         st.markdown("**Rationale:** " + rationale)
 
-        translated_summary = translate(
-            f"Estimated ILR Level is {ilr_level}. Summary: {summary}. Rationale: {rationale}",
-            src_lang="en", tgt_lang=detected_lang
-        )
-        st.markdown("**Feedback (translated):**")
-        st.write(translated_summary)
+        feedback_en = f"Estimated ILR Level is {ilr_level}. Summary: {summary}. Rationale: {rationale}"
+        feedback_native = translate(feedback_en, src_lang="en", tgt_lang=detected_lang)
 
-        speak_text(translated_summary, lang_code=detected_lang.split("-")[0])
+        st.markdown("**Feedback (translated):**")
+        st.write(feedback_native)
+
+        speak_text(feedback_native, lang_code=detected_lang.split("-")[0])
     else:
         st.warning("Please enter some text to analyze.")
